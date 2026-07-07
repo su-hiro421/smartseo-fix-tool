@@ -32,20 +32,25 @@
  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
  .toast.on{opacity:1}
  .foot{color:var(--mut);font-size:12px;margin-top:8px}
+ .rule{background:#eef4ff;border:1px solid #cfe0f7;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#334}
+ .ver{color:#99a;font-size:11px}
  @media(max-width:560px){.two{grid-template-columns:1fr}}
 </style></head>
 <body><div class="wrap">
 <h1>スマートSEO 修正整形ツール</h1>
-<p class="sub">顧客の修正要望をペースト → 同じルール・同じ型に整形。反映漏れ・「伝わらない/AIっぽい」を無くします。</p>
+<p class="sub">顧客の修正要望をペースト → 全員同じルール・同じ型に整形。反映漏れ・「伝わらない/AIっぽい」を無くします。</p>
 
 <!-- メイン：ペースト → AI整形 -->
 <div class="card">
   <h2>修正内容をペースト</h2>
-  <p class="hint">顧客の要望（メール/LINE/修正ツールのコメント）をそのまま貼り、「AIで整形」を押す → 共有アカウントのAI（Claude Code / Codex / GPTs）に貼り付けると、下記の型で整形された結果が返ります。ルールは全員共通です。</p>
-  <textarea id="raw" placeholder="例）記事拝見しました。全体的に硬いのでもう少しやわらかく。あと料金にも触れてほしいです。"></textarea>
+  <p class="hint">顧客の要望（メール/LINE/修正ツールのコメント）をそのまま貼り、「AIで整形」を押す → コピー＆共有AIが開くので貼り付けるだけ。要望を数えてから1修正=1ブロックで整形します（記事をまたぐ場合は記事ごとに分割）。</p>
+  <div class="fld"><label>案件メモ（任意・顧客名／記事URLなど）</label>
+    <input id="memo" placeholder="〇〇クリニック / https://www.example.com/post/xxx"></div>
+  <div class="fld"><label>修正内容</label>
+    <textarea id="raw" placeholder="例）記事拝見しました。全体的に硬いのでもう少しやわらかく。あと料金にも触れてほしいです。"></textarea></div>
   <div class="bar">
-    <button class="btn" onclick="copyPrompt()">AIで整形（プロンプトをコピー）</button>
-    <span class="foot">→ 共有AIに貼るだけ。1修正=1ブロックで整形されます。</span>
+    <button class="btn" onclick="copyPrompt()">AIで整形（コピー＆共有AIを開く）</button>
+    <button class="btn sec sm" onclick="insertExample()">例文を入れる</button>
   </div>
 </div>
 
@@ -53,7 +58,7 @@
 <div class="card">
   <details>
     <summary>AIを使わず手動で整形する（最小入力）</summary>
-    <p class="hint" style="margin-top:10px">最小3項目だけ。要望の数だけブロックを追加 →「整形して出力」でコピー用テキストになります。</p>
+    <p class="hint" style="margin-top:10px">最小4項目だけ。要望の数だけブロックを追加 →「整形して出力」でコピー用テキストになります。</p>
     <div id="rows"></div>
     <div class="bar">
       <button class="btn sec sm" onclick="addRow()">＋ 修正を追加</button>
@@ -65,33 +70,70 @@
   </details>
 </div>
 
-<p class="foot">ルールの正＝「修正指示 変換プレイブック（MD）」。手打ちはこの型に整えてから。</p>
+<div class="rule">📌 <b>運用ルール</b>：修正反映プロンプトの「正」は<b>このツールのPLAYBOOKのみ</b>。個人保存コピー・自作プロンプトは禁止（テンプレを直せば全員に即反映されるのがこのツールの価値）。テンプレ更新時は版番号を上げる。</div>
+<p class="foot ver">テンプレ版：<span id="verlabel"></span>　／　ルールの正＝「修正指示 変換プレイブック（MD）」</p>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
+/* === 設定 =============================================================
+   AI_URL : 「AIで整形」時に開く共有AIのURL。実際に使うツールに変更してください。
+            例）ChatGPT="https://chatgpt.com/"  Claude="https://claude.ai/new"
+   LOG_URL: 任意。GAS WebアプリURLを入れると利用ログを1行記録（空なら何もしない）。
+   ==================================================================== */
+const VERSION="fix-tool v1.2";
+const AI_URL="https://chatgpt.com/";
+const LOG_URL="";
+
 const TYPES=["誤字脱字","事実修正","表現・トーン","構成・順序","追加","削除","画像","リンク"];
-const PLAYBOOK=`あなたは、顧客の修正要望をスマートSEOの制作システムが確実に反映できる形に翻訳する編集アシスタントです。次を厳守してください。
+const EXAMPLE="記事拝見しました。全体的に硬いのでもう少しやわらかく。あと料金にも触れてほしいです。";
+
+const PLAYBOOK=`[${VERSION}]
+あなたは、顧客の修正要望をスマートSEOの制作システムが確実に反映できる形に翻訳する編集アシスタントです。次を厳守してください。
 - 足さない/省かない/盛らない（顧客が言っていないことを追加しない・要望を1つも落とさない）
 - 曖昧語（いい感じに 等）は具体化。できなければ捨てずに【確認事項】へ
 - 対象は必ず特定（どの記事のどの箇所か。見出し名/該当文を引用）。特定不可なら【確認事項】へ
 - 事実系（数値/創業年/実績/固有名詞）は顧客提供の根拠を必須に（無ければ「要根拠」・捏造禁止）
-- トーン系は必ず修正後に文例を1つ添える
+- トーン系は必ず修正内容に文例を1つ添える
 - 雑談/敬語/お礼は落とし、指示だけ抽出。記事に載る文言は自然な日本語に
 
-【出力フォーマット】1修正=1ブロック（複数なら番号を振る）
+【手順】
+1. まず顧客メッセージに含まれる要望を数え、「要望リスト：N件」として箇条書きで列挙する
+2. その後、1要望＝1ブロックで変換する（リストとブロック数は必ず一致させる）
+3. 複数の記事に跨る場合は「◆ 記事：〇〇」で記事ごとにセクションを分ける
+
+【出力フォーマット】1修正=1ブロック
 ■ 修正 {番号}
+- 原文：（顧客メッセージの該当部分をそのまま引用）
 - 対象箇所：（見出し名/段落/該当文を引用。不明なら「要特定」）
 - 種別：（誤字脱字/事実修正/表現・トーン/構成・順序/追加/削除/画像/リンク）
 - 修正内容：（何を→どう直すか。可能な限り実際の文章で。トーン系は文例）
 - 確認事項：（事実系の出典・未確定点。無ければ「なし」）
 
 最後に必ず：
-【反映チェック】顧客の要望数＝修正ブロック数 になっているか（漏れゼロ）
+【反映チェック】要望リストの件数＝修正ブロック数 になっているか（漏れゼロ）
+
+【変換例】
+入力例：「記事拝見しました。全体的に硬いので柔らかく。あと創業50年と書いてありましたが正しくは48年です」
+出力例：
+要望リスト：2件（①トーン修正 ②事実修正）
+■ 修正 1
+- 原文：「全体的に硬いので柔らかく」
+- 対象箇所：記事全体（要特定：特に硬い箇所があれば顧客に確認）
+- 種別：表現・トーン
+- 修正内容：語りかけ調へ。例:「重要です」→「押さえておきたいポイントです」
+- 確認事項：なし
+■ 修正 2
+- 原文：「創業50年と書いてありましたが正しくは48年です」
+- 対象箇所：会社紹介セクションの「創業50年」
+- 種別：事実修正
+- 修正内容：「創業50年」→「創業48年」
+- 確認事項：なし（顧客申告が根拠）
 
 --- 以下の顧客メッセージを上記ルールで変換してください ---
 `;
 
+document.getElementById("verlabel").textContent=VERSION;
 function opt(a){return a.map(v=>`<option>${v}</option>`).join("")}
 let idx=0;
 function addRow(){
@@ -100,7 +142,8 @@ function addRow(){
  d.className="row";
  d.innerHTML=`<span class="n">修正 ${idx}</span>
   <button class="btn del" style="position:absolute;top:8px;right:8px" onclick="this.parentNode.remove();renumber()">削除</button>
-  <div class="fld two" style="margin-top:8px">
+  <div class="fld"><label>原文（顧客の言葉をそのまま）</label><input class="f-src" placeholder="全体的に硬いので柔らかく"></div>
+  <div class="fld two">
     <div><label>種別</label><select class="f-type">${opt(TYPES)}</select></div>
     <div><label>確認事項（任意）</label><input class="f-note" placeholder="要根拠：正しい創業年を顧客に確認"></div>
   </div>
@@ -113,29 +156,36 @@ function val(r,c){const e=r.querySelector(c);return e?e.value.trim():""}
 function build(){
  const rows=[...document.querySelectorAll("#rows .row")];
  if(!rows.length){document.getElementById("out").textContent="修正を1つ以上追加してください。";return}
- let out="", need=[];
+ let out=`要望リスト：${rows.length}件\n\n`, need=[];
  rows.forEach((r,i)=>{
    const note=val(r,".f-note"); if(note) need.push(i+1);
    out+=`■ 修正 ${i+1}\n`;
+   out+=`- 原文：${val(r,".f-src")||"（未記入）"}\n`;
    out+=`- 種別：${val(r,".f-type")}\n`;
    out+=`- 修正内容：${val(r,".f-body")||"（要記入）"}\n`;
    out+=`- 確認事項：${note||"なし"}\n\n`;
  });
  document.getElementById("out").textContent=out.trim();
  const chk=document.getElementById("chk"); chk.style.display="block";
- chk.innerHTML=`<b>反映チェック</b><br>・修正ブロック数：<b>${rows.length}</b>（顧客の要望数と一致＝漏れゼロを確認）<br>`+
+ chk.innerHTML=`<b>反映チェック</b><br>・要望リスト＝修正ブロック数：<b>${rows.length}</b>（顧客の要望数と一致＝漏れゼロを確認）<br>`+
    (need.length?`・<b style="color:#b00">確認事項が残る修正：${need.join(", ")}</b>（確定してから反映）`:`・確認事項なし → そのまま手打ちOK`);
 }
+function insertExample(){document.getElementById("raw").value=EXAMPLE;toast("例文を入れました");}
 function copyPrompt(){
  const raw=document.getElementById("raw").value.trim();
  if(!raw){toast("先に修正内容をペーストしてください");return}
- copy(PLAYBOOK+raw); toast("AI整形プロンプトをコピーしました。共有AIに貼り付けてください");
+ const memo=document.getElementById("memo").value.trim();
+ let text=PLAYBOOK+(memo?("【案件】"+memo+"\n\n"):"")+raw;
+ copy(text); logUse();
+ toast("コピーしました。開いた共有AIに貼り付けてください");
+ if(AI_URL){try{window.open(AI_URL,"_blank")}catch(e){}}
 }
 function copyOut(){
  const t=document.getElementById("out").textContent;
  if(!t||t.startsWith("（")){toast("先に「整形して出力」してください");return}
  copy(t); toast("出力をコピーしました");
 }
+function logUse(){ if(!LOG_URL)return; try{navigator.sendBeacon(LOG_URL, JSON.stringify({v:VERSION}))}catch(e){} }
 function copy(t){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).catch(()=>fallback(t))}else{fallback(t)}}
 function fallback(t){const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy")}catch(e){}ta.remove()}
 let tt;function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("on");clearTimeout(tt);tt=setTimeout(()=>el.classList.remove("on"),2200)}
