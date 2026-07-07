@@ -49,16 +49,17 @@
   <div class="fld"><label>修正内容</label>
     <textarea id="raw" placeholder="例）記事拝見しました。全体的に硬いのでもう少しやわらかく。あと料金にも触れてほしいです。"></textarea></div>
   <div class="bar">
-    <button class="btn" onclick="copyPrompt()">AIで整形（コピー＆共有AIを開く）</button>
+    <button class="btn sec" onclick="copyPrompt()">AI用にコピー（任意）</button>
     <button class="btn sec sm" onclick="insertExample()">例文を入れる</button>
+    <span class="foot">※AIを併用したい人向け。コピーして手持ちのAIに貼ると自動整形されます（外部AIは開きません）。</span>
   </div>
 </div>
 
-<!-- 手動（最小・折りたたみ） -->
+<!-- 手動＝ツール内で完結（既定表示） -->
 <div class="card">
-  <details>
-    <summary>AIを使わず手動で整形する（最小入力）</summary>
-    <p class="hint" style="margin-top:10px">最小4項目だけ。要望の数だけブロックを追加 →「整形して出力」でコピー用テキストになります。</p>
+  <details open>
+    <summary>🔧 ツール内だけで整形する（AI不要・これで完結）</summary>
+    <p class="hint" style="margin-top:10px">要望の数だけブロックを追加し、各欄を埋める →「整形して出力」でツール内に整形結果が出ます（外部AI不要）。そのままコピーして手打ちへ。</p>
     <div id="rows"></div>
     <div class="bar">
       <button class="btn sec sm" onclick="addRow()">＋ 修正を追加</button>
@@ -177,8 +178,7 @@ function copyPrompt(){
  const memo=document.getElementById("memo").value.trim();
  let text=PLAYBOOK+(memo?("【案件】"+memo+"\n\n"):"")+raw;
  copy(text); logUse();
- toast("コピーしました。開いた共有AIに貼り付けてください");
- if(AI_URL){try{window.open(AI_URL,"_blank")}catch(e){}}
+ toast("AI用プロンプトをコピーしました（お使いのAIに貼り付け）");
 }
 function copyOut(){
  const t=document.getElementById("out").textContent;
